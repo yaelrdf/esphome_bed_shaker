@@ -189,16 +189,6 @@ number:
     step: 1
     restore_value: True
 
-#Level controller Internal Advanced routine
-  - platform: template
-    id: helper_level
-    optimistic: true
-    internal: True
-    min_value: 20
-    max_value: 100
-    step: 1
-
-
 ###############################################################
 #Shake simple
 script:
