@@ -75,7 +75,7 @@ binary_sensor:
   - platform: template
     name: "snozee universal"
     id: snozee
-    #icon: mdi:alarm-check
+    icon: mdi:alarm-check
   
   #Boot button
   - platform: gpio
@@ -130,7 +130,7 @@ switch:
   - platform: template
     name: "Shake routine"
     icon: mdi:alarm-multiple
-    id: routine
+    id: main
     optimistic: True
     on_turn_on:
       then:
@@ -147,31 +147,13 @@ switch:
                 - switch.template.publish:
                     id: definitive
                     state: ON
-        - if:
-            condition:
-                lambda: 'return id(selector).state == "advances";'
-            then:
-              - script.execute: shake_advanced
               
-      #- script.execute: shake_advanced
+    #Turn all scripts off
     on_turn_off:
       then:
-        #Shake anoying helper
-        - if:
-            condition:
-              all:
-                - lambda: 'return id(selector).state == "anoying";'
-                - switch.is_on: definitive
-            then:
-              - script.stop: shake_simple
-              - output.turn_off: vibrator
-              - delay: 30s
-              - script.execute: shake_simple
-            #Usual turn of
-            else:
-              - script.stop: shake_simple
-              - script.stop: shake_advanced
-              - output.turn_off: vibrator
+        - script.stop: shake_simple
+        - script.stop: shake_anoying
+        - output.turn_off: vibrator
 
 #Helper for anoying routine
   - platform: template
@@ -190,7 +172,6 @@ select:
     optimistic: true
     options:
       - simple
-      - advanced
       - anoying
     initial_option: simple
     restore_value: True
@@ -219,47 +200,51 @@ number:
 
 
 ###############################################################
-#Scrips and automations
+#Shake simple
 script:
   - id: shake_simple
     mode: queued
     then:
-       - delay: 3s
-       - output.set_level:
-            id: vibrator
-            level: !lambda "return id(level).state/100;"
-       - delay: 1s
-       - output.turn_off: vibrator
-       - script.execute: shake_simple
+      while:
+        condition:
+          - binary_sensor.is_off: snozee
+        then:
+          - output.set_level:
+                id: vibrator
+                level: !lambda "return id(level).state/100;"
+          - delay: 1s
+          - output.turn_off: vibrator
+          - delay: 3s
+          - script.execute: shake_simple
+      #Stop after snoozing
+      - output.turn_off: vibrator
+      - switch.template.publish:
+          id: main
+          state: OFF
+      - script.stop: shake_simple
 
-######################################################################
-#advanced
-  - id: shake_advanced
+
+#######################################################################
+#Shake anoying
+script:
+  - id: shake_anoting
     mode: queued
     then:
-    #Set helper to 0
-      - number.to_min: helper_level
-      #increment routine
-      - while:
-          condition:
-            number.in_range:
-              id: helper_level
-              below: 99
-          then:
-            - number.increment:
-                id: helper_level
-                cycle: True
+      - switch.template.publish:
+          id: definitive
+          state: ON
+      while:
+        condition:
+          - switch.is_on: definitive
+        then:
+          - script.execute: shake_simple
+          #After snozee
+          - script.wait: shake_simple
+          - delay: 60s
+          - script.execute: shake_simple
 
-            - output.set_level:
-                id: vibrator
-                level: !lambda "return id(helper_level).state/100;"
-            - delay: 20ms
-      
-      - output.turn_off: vibrator
-      - delay: 3s
-      - script.execute: shake_advanced
 
-#IR sensor
+#IR reciever
 remote_receiver:
   pin: 
     number: GPIO02
