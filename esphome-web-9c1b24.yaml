@@ -17,19 +17,19 @@ api:
 
 # Allow Over-The-Air updates
 ota:
-- platform: esphome
+  - platform: esphome
 
 wifi:
-    networks:
+  networks:
     - ssid: Gugu_Wifi
       password: cdd57dba84
 
     - ssid: Gugu_Wifi-Wi-Fi5
       password: cdd57dba84
 
-    ap:
-        ssid: "Bed Shaker"
-        password: "cdd57dba84"
+  ap:
+    ssid: "Bed Shaker"
+    password: "cdd57dba84"
 
 captive_portal:
 
@@ -39,7 +39,7 @@ web_server:
 
   
 #status led
-#light
+#light:
 #  - platform: status_led
 #    name: "Led de estado"
 #    internal: True
@@ -110,7 +110,7 @@ binary_sensor:
         - binary_sensor.template.publish:
             id: snozee
             state: True
-        - delay: 1s
+        - delay: 6s
         - binary_sensor.template.publish:
             id: snozee
             state: False
@@ -123,39 +123,49 @@ binary_sensor:
       code: [9058, -4487, 597, -537, 598, -533, 596, -539, 594, -539, 595, -536, 597, -536, 598, -536, 597, -537, 595, -1645, 597, -1641, 596, -1645, 597, -1643, 621, -1619, 596, -1644, 594, -1645, 597, -1644, 592, -540, 593, -1646, 595, -1644, 595]
     on_press: 
       then:
-        button.press: test
+        - button.press: test
 
 #Shake routine activator
 switch:
   - platform: template
     name: "Shake routine"
     icon: mdi:alarm-multiple
-    id: main
+    id: activate
     optimistic: True
     on_turn_on:
       then:
         - if:
             condition:
-                lambda: 'return id(selector).state == "simple";'
+              lambda: 'return id(selector).state == "simple";'
             then:
-                - script.execute: shake_simple
+              - script.execute: shake_simple
         - if:
             condition:
-                lambda: 'return id(selector).state == "anoying";'
+              lambda: 'return id(selector).state == "anoying";'
             then:
-                - script.execute: shake_simple
-                - switch.template.publish:
-                    id: definitive
-                    state: ON
+              - script.execute: shake_anoying
+              - switch.template.publish:
+                  id: definitive
+                  state: ON
               
     #Turn all scripts off
     on_turn_off:
       then:
-        - script.stop: shake_simple
-        - script.stop: shake_anoying
-        - output.turn_off: vibrator
+        - if:
+            condition:
+              lambda: 'return id(selector).state == "simple";'
+            then:
+              - script.stop: shake_simple
+        - if:
+            condition:
+              and:
+                - lambda: 'return id(selector).state == "anoying";'
+                - switch.is_off: definitive
+            then:
+              - logger.log: "Stop from main switch"
+              - script.stop: shake_anoying
 
-#Helper for anoying routine
+  #Helper for anoying routine
   - platform: template
     name: "Snoze definitivo"
     icon: mdi:alarm-multiple
@@ -188,6 +198,19 @@ number:
     max_value: 100
     step: 1
     restore_value: True
+  
+  #Delay for anoying mode
+  - platform: template
+    name: "Re execution time"
+    icon: mdi:timeline-clock-outline
+    id: time_betwen
+    optimistic: true
+    unit_of_measurement: "seg"
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: True
+    initial_value: 30
 
 ###############################################################
 #Shake simple
@@ -195,43 +218,49 @@ script:
   - id: shake_simple
     mode: queued
     then:
-      while:
-        condition:
-          - binary_sensor.is_off: snozee
-        then:
-          - output.set_level:
+      - while:
+          condition:
+            - binary_sensor.is_off: snozee
+          then:
+            - logger.log: "vibrating"
+            - output.set_level:
                 id: vibrator
                 level: !lambda "return id(level).state/100;"
-          - delay: 1s
-          - output.turn_off: vibrator
-          - delay: 3s
-          - script.execute: shake_simple
+            - delay: 1s
+            - output.turn_off: vibrator
+            - delay: 3s
+            
       #Stop after snoozing
       - output.turn_off: vibrator
       - switch.template.publish:
-          id: main
+          id: activate
           state: OFF
-      - script.stop: shake_simple
 
-
-#######################################################################
-#Shake anoying
-script:
-  - id: shake_anoting
+  #Shake anoying
+  - id: shake_anoying
     mode: queued
     then:
       - switch.template.publish:
           id: definitive
           state: ON
-      while:
-        condition:
-          - switch.is_on: definitive
-        then:
-          - script.execute: shake_simple
-          #After snozee
-          - script.wait: shake_simple
-          - delay: 60s
-          - script.execute: shake_simple
+      - while:
+          condition:
+            - switch.is_on: definitive
+          then:
+            - script.execute: shake_simple
+            #After snozee
+            - script.wait: shake_simple
+            - logger.log: "Start of the cooldown"
+            - delay: !lambda "return id(time_betwen).state*1000;"
+            - if:
+                condition:
+                  - switch.is_on: definitive
+                then:
+                  - logger.log: "Re execution"
+                  - script.execute: shake_simple
+                else:
+                  - logger.log: "No reexecution"
+                  - script.stop: shake_anoying
 
 
 #IR reciever
@@ -240,5 +269,4 @@ remote_receiver:
     number: GPIO02
     inverted: true
     mode: INPUT_PULLUP
-  dump: raw
-
+  #dump: none
